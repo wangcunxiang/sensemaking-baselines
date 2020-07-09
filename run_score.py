@@ -13,7 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Finetuning multi-lingual models on Binary (e.g. Bert, DistilBERT, XLM).
+""" Finetuning multi-lingual models on Score (e.g. Bert, DistilBERT, XLM).
     Adapted from `examples/text-classification/run_glue.py`"""
 
 
@@ -33,14 +33,14 @@ from transformers import (
     WEIGHTS_NAME,
     AdamW,
     AutoConfig,
-    AutoModelForSequenceClassification,
     AutoTokenizer,
     get_linear_schedule_with_warmup,
 )
-from binary_setting import glue_convert_examples_to_features as convert_examples_to_features # No need to change to binary cause the function does not take in task_name in this .py
-from binary_setting import binary_compute_metrics as compute_metrics
-from binary_setting import binary_output_modes as output_modes
-from binary_setting import binary_processors as processors
+from modeling_auto import AutoModelForSequenceScore
+from score_setting import glue_convert_examples_to_features as convert_examples_to_features # No need to change to score cause the function does not take in task_name in this .py
+from score_setting import score_compute_metrics as compute_metrics
+from score_setting import score_output_modes as output_modes
+from score_setting import score_processors as processors
 
 
 try:
@@ -161,11 +161,11 @@ def train(args, train_dataset, model, tokenizer):
 
             model.train()
             batch = tuple(t.to(args.device) for t in batch)
-            inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3]}
-            if args.model_type != "distilbert":
-                inputs["token_type_ids"] = (
-                    batch[2] if args.model_type in ["bert"] else None
-                )  # XLM and DistilBERT don't use segment_ids
+            inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[2]}
+            # if args.model_type != "distilbert":
+            #     inputs["token_type_ids"] = (
+            #         batch[2] if args.model_type in ["bert"] else None
+            #     )  # XLM and DistilBERT don't use segment_ids
             outputs = model(**inputs)
             loss = outputs[0]  # model outputs are always tuple in transformers (see doc)
 
@@ -268,7 +268,7 @@ def evaluate(args, model, tokenizer, prefix=""):
             batch = tuple(t.to(args.device) for t in batch)
 
             with torch.no_grad():
-                inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3]}
+                inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[2]}
                 if args.model_type != "distilbert":
                     inputs["token_type_ids"] = (
                         batch[2] if args.model_type in ["bert"] else None
@@ -278,6 +278,7 @@ def evaluate(args, model, tokenizer, prefix=""):
 
                 eval_loss += tmp_eval_loss.mean().item()
             nb_eval_steps += 1
+            print(logits)
             if preds is None:
                 preds = logits.detach().cpu().numpy()
                 out_label_ids = inputs["labels"].detach().cpu().numpy()
@@ -289,7 +290,7 @@ def evaluate(args, model, tokenizer, prefix=""):
         if args.output_mode == "classification":
             preds = np.argmax(preds, axis=1)
         else:
-            raise ValueError("No other `output_mode` for Binary.")
+            raise ValueError("No other `output_mode` for Score.")
         result = compute_metrics(eval_task, preds, out_label_ids)
         results.update(result)
 
@@ -344,14 +345,14 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False):
     all_attention_mask = torch.tensor([f.attention_mask for f in features], dtype=torch.long)
     # for f in features:
     #     print(f.token_type_ids)
-    all_token_type_ids = torch.tensor([f.token_type_ids for f in features], dtype=torch.long)
+    # all_token_type_ids = torch.tensor([f.token_type_ids for f in features], dtype=torch.long)
 
-    if output_mode == "classification":
+    if output_mode == "classification" or output_mode == "regression":
         all_labels = torch.tensor([f.label for f in features], dtype=torch.long)
     else:
-        raise ValueError("No other `output_mode` for Binary.")
+        raise ValueError("No other `output_mode` for Score.")
 
-    dataset = TensorDataset(all_input_ids, all_attention_mask, all_token_type_ids, all_labels)
+    dataset = TensorDataset(all_input_ids, all_attention_mask, all_labels)
     return dataset
 
 
@@ -531,8 +532,8 @@ def main():
     # Set seed
     set_seed(args)
 
-    # Prepare Binary task
-    args.task_name = "binary"
+    # Prepare Score task
+    args.task_name = "score"
     if args.task_name not in processors:
         raise ValueError("Task not found: %s" % (args.task_name))
     processor = processors[args.task_name](language=args.language, train_language=args.train_language)
@@ -556,7 +557,7 @@ def main():
         do_lower_case=args.do_lower_case,
         cache_dir=args.cache_dir,
     )
-    model = AutoModelForSequenceClassification.from_pretrained(
+    model = AutoModelForSequenceScore.from_pretrained(
         args.model_name_or_path,
         from_tf=bool(".ckpt" in args.model_name_or_path),
         config=config,
@@ -595,7 +596,7 @@ def main():
         torch.save(args, os.path.join(args.output_dir, "training_args.bin"))
 
         # Load a trained model and vocabulary that you have fine-tuned
-        model = AutoModelForSequenceClassification.from_pretrained(args.output_dir)
+        model = AutoModelForSequenceScore.from_pretrained(args.output_dir)
         tokenizer = AutoTokenizer.from_pretrained(args.output_dir)
         model.to(args.device)
 
@@ -613,7 +614,7 @@ def main():
             global_step = checkpoint.split("-")[-1] if len(checkpoints) > 1 else ""
             prefix = checkpoint.split("/")[-1] if checkpoint.find("checkpoint") != -1 else ""
 
-            model = AutoModelForSequenceClassification.from_pretrained(checkpoint)
+            model = AutoModelForSequenceScore.from_pretrained(checkpoint)
             model.to(args.device)
             result = evaluate(args, model, tokenizer, prefix=prefix)
             result = dict((k + "_{}".format(global_step), v) for k, v in result.items())

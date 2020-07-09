@@ -13,13 +13,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" BINARY utils (dataset loading and evaluation) """
+""" SCORE utils (dataset loading and evaluation) """
 
 
 import logging
 import os
 from enum import Enum
 from typing import List, Optional, Union
+from sklearn.metrics import matthews_corrcoef
 
 from transformers import is_tf_available
 from transformers import PreTrainedTokenizer
@@ -28,8 +29,8 @@ from transformers import DataProcessor, InputExample, InputFeatures
 logger = logging.getLogger(__name__)
 
 
-class BinaryProcessor(DataProcessor):
-    """Processor for the Binary dataset."""
+class ScoreProcessor(DataProcessor):
+    """Processor for the Score dataset."""
 
     def __init__(self, language, train_language=None):
         self.language = language
@@ -77,26 +78,27 @@ class BinaryProcessor(DataProcessor):
         return ["0", "1"]
 
 
-binary_processors = {
-    "binary": BinaryProcessor,
+score_processors = {
+    "score": ScoreProcessor,
 }
 
-binary_output_modes = {
-    "binary": "classification",
+score_output_modes = {
+    "score": "regression",
 }
 
-binary_tasks_num_labels = {
-    "binary": 2,
+score_tasks_num_labels = {
+    "score": 1,
 }
 
 
-def simple_accuracy(preds, labels):
-    return (preds == labels).mean()
+# def simple_accuracy(preds, labels):
+#     return (preds == labels).mean()
 
-def binary_compute_metrics(task_name, preds, labels): #
+def score_compute_metrics(task_name, preds, labels): #
     assert len(preds) == len(labels)
-    if task_name == "binary":
-        return {"acc": simple_accuracy(preds, labels)}
+    if task_name == "score":
+
+        return {"mcc": matthews_corrcoef(labels, preds)}
     else:
         raise KeyError(task_name)
 
@@ -157,19 +159,17 @@ if is_tf_available():
                     {
                         "input_ids": ex.input_ids,
                         "attention_mask": ex.attention_mask,
-                        "token_type_ids": ex.token_type_ids,
                     },
                     ex.label,
                 )
 
         return tf.data.Dataset.from_generator(
             gen,
-            ({"input_ids": tf.int32, "attention_mask": tf.int32, "token_type_ids": tf.int32}, tf.int64),
+            ({"input_ids": tf.int32, "attention_mask": tf.int32}, tf.int64),
             (
                 {
                     "input_ids": tf.TensorShape([None]),
                     "attention_mask": tf.TensorShape([None]),
-                    "token_type_ids": tf.TensorShape([None]),
                 },
                 tf.TensorShape([]),
             ),
