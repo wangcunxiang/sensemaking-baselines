@@ -4,7 +4,8 @@
 /data/
 /runs/
 /results/
-/_pycache_/
+/__pycache__/
+/.idea/
 *.sh
 # Datasource local storage ignored files
 /dataSources/
