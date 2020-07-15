@@ -43,6 +43,7 @@ from transformers.configuration_utils import PretrainedConfig
 
 from modelings import (
     BertForSequenceScore,
+    RobertaForSequenceScore,
 )
 
 MODEL_FOR_SEQUENCE_SCORE_MAPPING = OrderedDict(
@@ -54,7 +55,7 @@ MODEL_FOR_SEQUENCE_SCORE_MAPPING = OrderedDict(
         # (XLMRobertaConfig, XLMRobertaForSequenceScore),
         # (BartConfig, BartForSequenceScore),
         # (LongformerConfig, LongformerForSequenceScore),
-        # (RobertaConfig, RobertaForSequenceScore),
+        (RobertaConfig, RobertaForSequenceScore),
         # (BertConfig, BertForSequenceScore),
         # (XLNetConfig, XLNetForSequenceScore),
         # (FlaubertConfig, FlaubertForSequenceScore),

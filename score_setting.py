@@ -20,11 +20,10 @@ import logging
 import os
 from enum import Enum
 from typing import List, Optional, Union
-from sklearn.metrics import matthews_corrcoef
 
-from transformers import is_tf_available
 from transformers import PreTrainedTokenizer
 from transformers import DataProcessor, InputExample, InputFeatures
+from transformers.data.metrics import pearson_and_spearman
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +74,7 @@ class ScoreProcessor(DataProcessor):
 
     def get_labels(self):
         """See base class."""
-        return ["0", "1"]
+        return [None]
 
 
 score_processors = {
@@ -91,14 +90,15 @@ score_tasks_num_labels = {
 }
 
 
-# def simple_accuracy(preds, labels):
-#     return (preds == labels).mean()
+def simple_accuracy(preds, labels):
+    return (preds == labels).mean()
 
 def score_compute_metrics(task_name, preds, labels): #
     assert len(preds) == len(labels)
     if task_name == "score":
 
-        return {"mcc": matthews_corrcoef(labels, preds)}
+        return {"pearson_and_spearman": pearson_and_spearman(preds, labels),
+                "acc":simple_accuracy(preds, labels)}
     else:
         raise KeyError(task_name)
 
@@ -124,56 +124,14 @@ def glue_convert_examples_to_features(
         output_mode: String indicating the output mode. Either ``regression`` or ``classification``
 
     Returns:
-        If the ``examples`` input is a ``tf.data.Dataset``, will return a ``tf.data.Dataset``
-        containing the task-specific features. If the input is a list of ``InputExamples``, will return
+        If the input is a list of ``InputExamples``, will return
         a list of task-specific ``InputFeatures`` which can be fed to the model.
 
     """
-    if is_tf_available() and isinstance(examples, tf.data.Dataset):
-        print("is_tf_available() yes")
-        if task is None:
-            raise ValueError("When calling glue_convert_examples_to_features from TF, the task parameter is required.")
-        return _tf_glue_convert_examples_to_features(examples, tokenizer, max_length=max_length, task=task)
     return _glue_convert_examples_to_features(
         examples, tokenizer, max_length=max_length, task=task, label_list=label_list, output_mode=output_mode
     )
 
-
-if is_tf_available():
-
-    def _tf_glue_convert_examples_to_features(
-        examples: tf.data.Dataset, tokenizer: PreTrainedTokenizer, task=str, max_length: Optional[int] = None,
-    ) -> tf.data.Dataset:
-        """
-        Returns:
-            A ``tf.data.Dataset`` containing the task-specific features.
-
-        """
-        processor = glue_processors[task]()
-        examples = [processor.tfds_map(processor.get_example_from_tensor_dict(example)) for example in examples]
-        features = glue_convert_examples_to_features(examples, tokenizer, max_length=max_length, task=task)
-
-        def gen():
-            for ex in features:
-                yield (
-                    {
-                        "input_ids": ex.input_ids,
-                        "attention_mask": ex.attention_mask,
-                    },
-                    ex.label,
-                )
-
-        return tf.data.Dataset.from_generator(
-            gen,
-            ({"input_ids": tf.int32, "attention_mask": tf.int32}, tf.int64),
-            (
-                {
-                    "input_ids": tf.TensorShape([None]),
-                    "attention_mask": tf.TensorShape([None]),
-                },
-                tf.TensorShape([]),
-            ),
-        )
 
 
 def _glue_convert_examples_to_features(
@@ -186,15 +144,6 @@ def _glue_convert_examples_to_features(
 ):
     if max_length is None:
         max_length = tokenizer.max_len
-
-    if task is not None:
-        processor = glue_processors[task]()
-        if label_list is None:
-            label_list = processor.get_labels()
-            logger.info("Using label list %s for task %s" % (label_list, task))
-        if output_mode is None:
-            output_mode = glue_output_modes[task]
-            logger.info("Using output mode %s for task %s" % (output_mode, task))
 
     label_map = {label: i for i, label in enumerate(label_list)}
 
@@ -223,6 +172,7 @@ def _glue_convert_examples_to_features(
     for i, example in enumerate(examples[:5]):
         logger.info("*** Example ***")
         logger.info("guid: %s" % (example.guid))
+        logger.info("text_a: %s" % (example.text_a))
         logger.info("features: %s" % features[i])
 
     return features

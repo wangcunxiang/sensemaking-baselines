@@ -269,16 +269,16 @@ def evaluate(args, model, tokenizer, prefix=""):
 
             with torch.no_grad():
                 inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[2]}
-                if args.model_type != "distilbert":
-                    inputs["token_type_ids"] = (
-                        batch[2] if args.model_type in ["bert"] else None
-                    )  # XLM and DistilBERT don't use segment_ids
+                # if args.model_type != "distilbert":
+                #     inputs["token_type_ids"] = (
+                #         batch[2] if args.model_type in ["bert"] else None
+                #     )  # XLM and DistilBERT don't use segment_ids
                 outputs = model(**inputs)
                 tmp_eval_loss, logits = outputs[:2]
 
                 eval_loss += tmp_eval_loss.mean().item()
             nb_eval_steps += 1
-            print(logits)
+
             if preds is None:
                 preds = logits.detach().cpu().numpy()
                 out_label_ids = inputs["labels"].detach().cpu().numpy()
@@ -287,8 +287,8 @@ def evaluate(args, model, tokenizer, prefix=""):
                 out_label_ids = np.append(out_label_ids, inputs["labels"].detach().cpu().numpy(), axis=0)
 
         eval_loss = eval_loss / nb_eval_steps
-        if args.output_mode == "classification":
-            preds = np.argmax(preds, axis=1)
+        if args.output_mode == "regression":
+            preds = np.squeeze(preds, axis=1)
         else:
             raise ValueError("No other `output_mode` for Score.")
         result = compute_metrics(eval_task, preds, out_label_ids)
@@ -343,12 +343,11 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False):
     # Convert to Tensors and build dataset
     all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
     all_attention_mask = torch.tensor([f.attention_mask for f in features], dtype=torch.long)
-    # for f in features:
-    #     print(f.token_type_ids)
-    # all_token_type_ids = torch.tensor([f.token_type_ids for f in features], dtype=torch.long)
 
-    if output_mode == "classification" or output_mode == "regression":
+    if output_mode == "classification":
         all_labels = torch.tensor([f.label for f in features], dtype=torch.long)
+    elif output_mode == "regression":
+        all_labels = torch.tensor([f.label for f in features], dtype=torch.float)
     else:
         raise ValueError("No other `output_mode` for Score.")
 
